@@ -94,7 +94,7 @@
     handsModel.scale.setScalar(1);
     let externalArmsModel=null;
     const weaponProfiles={
-      rifle:{position:[.48,-.34,-.88],rotation:[0,Math.PI*.56,-.06],scale:.66},
+      rifle:{position:[.38,-.40,-.76],rotation:[-.15,Math.PI*.66,.18],scale:.92},
       pistol:{position:[.52,-.34,-.9],rotation:[0,Math.PI*.56,-.04],scale:.64},
       knife:{position:[.44,-.3,-.9],rotation:[0,0,.08],scale:.88}
     };
@@ -257,9 +257,12 @@
     createWeaponModel();
     createHandsModel();
     setWeaponModel("rifle");
+    const assetRoot=location.protocol==="file:"
+      ? "https://raw.githubusercontent.com/yogaliu0818/mini-tactical-fps/main/assets/"
+      : "assets/";
     function loadExternalArms(){
       const loader=new GLTFLoader();
-      loader.load("assets/arms.glb",gltf=>{
+      loader.load(`${assetRoot}arms.glb`,gltf=>{
         const model=gltf.scene;
         const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(new THREE.Vector3());
         const longest=Math.max(size.x,size.y,size.z);
@@ -285,9 +288,9 @@
 
     function loadExternalWeaponModels(){
       const assets={
-        rifle:{path:"assets/rifle.glb",targetLength:1.05},
-        pistol:{path:"assets/pistol.glb",targetLength:.68},
-        knife:{path:"assets/karambit.glb",targetLength:.6}
+        rifle:{path:`${assetRoot}rifle.glb`,targetLength:1.05},
+        pistol:{path:`${assetRoot}pistol.glb`,targetLength:.68},
+        knife:{path:`${assetRoot}karambit.glb`,targetLength:.6}
       };
       const loader=new GLTFLoader();
       for(const [name,config] of Object.entries(assets)){
@@ -476,6 +479,25 @@
       const material=new THREE.MeshBasicMaterial({color,transparent:true,opacity:1,depthTest:true});
       const spark=new THREE.Mesh(new THREE.SphereGeometry(.09,8,8),material);spark.position.copy(point);scene.add(spark);effects.push({object:spark,life:.2,duration:.2});
     }
+    function getMuzzleWorldPosition(){
+      const fallbackDirection=new THREE.Vector3();camera.getWorldDirection(fallbackDirection);
+      const fallback=camera.position.clone().addScaledVector(fallbackDirection,.4);
+      const model=weaponModels[selectedWeapon];
+      if(!model)return fallback;
+      const terms=selectedWeapon==="rifle"?["muzzle brake","muzzle","barrel"]:["pistol barrel","muzzle","barrel"];
+      let muzzle=null;
+      model.traverse(node=>{
+        if(muzzle||!node.isMesh)return;
+        const name=(node.name||"").toLowerCase();
+        if(terms.some(term=>name.includes(term)))muzzle=node;
+      });
+      if(!muzzle)return fallback;
+      const point=new THREE.Vector3();muzzle.getWorldPosition(point);
+      const rotation=new THREE.Quaternion();muzzle.getWorldQuaternion(rotation);
+      // Blender's barrel primitives use their local Z axis as the barrel axis.
+      point.add(new THREE.Vector3(0,0,1).applyQuaternion(rotation).normalize().multiplyScalar(.08));
+      return point;
+    }
     function knifeAttack(){
       const gun=weapons.knife;player.fireCooldown=gun.cooldown;player.weaponKick=.12;player.weaponSwing=-.48;
       updateCamera();raycaster.setFromCamera(new THREE.Vector2(0,0),camera);raycaster.far=2.8;
@@ -502,11 +524,8 @@
       const aim=new THREE.Vector2(THREE.MathUtils.randFloatSpread(spread),THREE.MathUtils.randFloatSpread(spread));
       raycaster.setFromCamera(aim,camera);raycaster.far=45;
       const hits=raycaster.intersectObjects([...obstacleMeshes,...enemies.map(e=>e.group)],true);
-      const direction=new THREE.Vector3();camera.getWorldDirection(direction);
-      const right=new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
-      const up=new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion);
-      const muzzle=camera.position.clone().addScaledVector(direction,.4).addScaledVector(right,.15).addScaledVector(up,-.12);
-      const end=hits.length?hits[0].point.clone():camera.position.clone().addScaledVector(direction,45);
+      const muzzle=getMuzzleWorldPosition();
+      const end=hits.length?hits[0].point.clone():camera.position.clone().addScaledVector(raycaster.ray.direction,45);
       addTracer(muzzle,end);
       if(hits.length){
         const hit=hits[0];let node=hit.object,hitEnemy=null;
