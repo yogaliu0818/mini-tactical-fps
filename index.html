@@ -94,9 +94,9 @@
     handsModel.scale.setScalar(1);
     let externalArmsModel=null;
     const weaponProfiles={
-      rifle:{position:[.38,-.40,-.76],rotation:[-.15,Math.PI*.66,.18],scale:.92},
+      rifle:{position:[.38,-.40,-.76],rotation:[-.15,Math.PI*.66,.28],scale:.92},
       pistol:{position:[.52,-.34,-.9],rotation:[0,Math.PI*.56,-.04],scale:.64},
-      knife:{position:[.44,-.3,-.9],rotation:[0,0,.08],scale:.88}
+      knife:{position:[.44,-.3,-.9],rotation:[0,Math.PI,.28],scale:.88}
     };
     const handProfiles={
       rifle:{left:[.82,.2,-1.22],right:[.25,.05,-.84]},
@@ -484,7 +484,7 @@
       const fallback=camera.position.clone().addScaledVector(fallbackDirection,.4);
       const model=weaponModels[selectedWeapon];
       if(!model)return fallback;
-      const terms=selectedWeapon==="rifle"?["muzzle brake","muzzle","barrel"]:["pistol barrel","muzzle","barrel"];
+      const terms=selectedWeapon==="rifle"?["muzzle brake"]:["pistol barrel","muzzle","barrel"];
       let muzzle=null;
       model.traverse(node=>{
         if(muzzle||!node.isMesh)return;
@@ -494,8 +494,13 @@
       if(!muzzle)return fallback;
       const point=new THREE.Vector3();muzzle.getWorldPosition(point);
       const rotation=new THREE.Quaternion();muzzle.getWorldQuaternion(rotation);
-      // Blender's barrel primitives use their local Z axis as the barrel axis.
-      point.add(new THREE.Vector3(0,0,1).applyQuaternion(rotation).normalize().multiplyScalar(.08));
+      // The barrel meshes use local Z as their axis; use half the actual muzzle depth
+      // so the tracer begins at the front face instead of an arbitrary floating offset.
+      muzzle.geometry.computeBoundingBox();
+      const box=muzzle.geometry.boundingBox;
+      const worldScale=muzzle.getWorldScale(new THREE.Vector3());
+      const frontOffset=((box.max.z-box.min.z)*.5*worldScale.z)+.012;
+      point.add(new THREE.Vector3(0,0,1).applyQuaternion(rotation).normalize().multiplyScalar(frontOffset));
       return point;
     }
     function knifeAttack(){
@@ -522,10 +527,19 @@
       const spread=gun.spread+(moving?.009:0)+player.recoil*.0012;
       updateCamera();
       const aim=new THREE.Vector2(THREE.MathUtils.randFloatSpread(spread),THREE.MathUtils.randFloatSpread(spread));
-      raycaster.setFromCamera(aim,camera);raycaster.far=45;
-      const hits=raycaster.intersectObjects([...obstacleMeshes,...enemies.map(e=>e.group)],true);
       const muzzle=getMuzzleWorldPosition();
-      const end=hits.length?hits[0].point.clone():camera.position.clone().addScaledVector(raycaster.ray.direction,45);
+      const shootables=[...obstacleMeshes,...enemies.map(e=>e.group)];
+      // Use the camera only to resolve the crosshair target, then fire the actual
+      // hitscan ray from the muzzle so the tracer and hit registration share an origin.
+      raycaster.setFromCamera(aim,camera);raycaster.far=45;
+      const aimHits=raycaster.intersectObjects(shootables,true);
+      const aimPoint=aimHits.length
+        ? aimHits[0].point.clone()
+        : camera.position.clone().addScaledVector(raycaster.ray.direction,45);
+      const muzzleDirection=aimPoint.clone().sub(muzzle).normalize();
+      raycaster.set(muzzle,muzzleDirection);raycaster.far=muzzle.distanceTo(aimPoint);
+      const hits=raycaster.intersectObjects(shootables,true);
+      const end=hits.length?hits[0].point.clone():aimPoint;
       addTracer(muzzle,end);
       if(hits.length){
         const hit=hits[0];let node=hit.object,hitEnemy=null;
