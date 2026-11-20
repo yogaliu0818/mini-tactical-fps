@@ -96,7 +96,7 @@
     const weaponProfiles={
       rifle:{position:[.38,-.40,-.76],rotation:[-.15,Math.PI*.66,.28],scale:.92},
       pistol:{position:[.52,-.34,-.9],rotation:[0,Math.PI*.56,-.04],scale:.64},
-      knife:{position:[.44,-.3,-.9],rotation:[0,Math.PI,.28],scale:.88}
+      knife:{position:[.44,-.3,-.9],rotation:[0,Math.PI,.10],scale:.88}
     };
     const handProfiles={
       rifle:{left:[.82,.2,-1.22],right:[.25,.05,-.84]},
@@ -119,7 +119,8 @@
     let leftHandModel,rightHandModel;
     const weaponAnim={
       phase:"ready",time:0,duration:0,pending:null,
-      offsetX:0,offsetY:0,offsetZ:0,pitch:0,roll:0,spin:0
+      offsetX:0,offsetY:0,offsetZ:0,pitch:0,roll:0,spin:0,
+      slashActive:false,slashTime:0,slashAngle:0,slashX:0,slashY:0,slashZ:0,slashRoll:0
     };
 
     function createWeaponModel(){
@@ -217,22 +218,37 @@
       poseExternalArms(name);
     }
     const easeMotion=t=>t*t*(3-2*t);
+    const knifeDrawTurn=Math.PI*1.35;
     function beginWeaponEquip(name,initial=false){
       if(!weapons[name]||weaponAnim.phase!=="ready")return;
       if(!initial&&name===selectedWeapon)return;
       weaponAnim.phase="lower";weaponAnim.time=0;weaponAnim.pending=name;
       weaponAnim.offsetX=0;weaponAnim.offsetY=0;weaponAnim.offsetZ=0;weaponAnim.pitch=0;weaponAnim.roll=0;weaponAnim.spin=0;
+      weaponAnim.slashActive=false;weaponAnim.slashTime=0;weaponAnim.slashAngle=0;weaponAnim.slashX=0;weaponAnim.slashY=0;weaponAnim.slashZ=0;weaponAnim.slashRoll=0;
       player.reloadTime=0;player.fireCooldown=0;player.weaponKick=0;player.weaponSwing=0;
       setMessage(initial?`${weapons[name].name} 裝備中…`:`切換至 ${weapons[name].name}…`,.8);
     }
     function updateWeaponAnimation(dt){
-      if(weaponAnim.phase==="ready")return;
+      if(weaponAnim.slashActive){
+        weaponAnim.slashTime+=dt;
+        const p=Math.min(1,weaponAnim.slashTime/.28),arc=Math.sin(Math.PI*p);
+        // A short cross-body cut: the finger ring remains the pivot while the blade
+        // sweeps through an arc and returns to the same ready pose.
+        weaponAnim.slashAngle=-arc*Math.PI*.72;
+        weaponAnim.slashX=.08*arc;weaponAnim.slashY=.025*arc;weaponAnim.slashZ=.1*arc;weaponAnim.slashRoll=-.16*arc;
+        if(p>=1){weaponAnim.slashActive=false;weaponAnim.slashTime=0;weaponAnim.slashAngle=0;weaponAnim.slashX=0;weaponAnim.slashY=0;weaponAnim.slashZ=0;weaponAnim.slashRoll=0;}
+      }
+      if(weaponAnim.phase==="ready"){
+        if(weaponAnim.slashActive||weaponAnim.slashAngle!==0)updateCamera();
+        return;
+      }
       weaponAnim.time+=dt;
       if(weaponAnim.phase==="lower"){
         const p=easeMotion(Math.min(1,weaponAnim.time/.13));
         weaponAnim.offsetX=.04*p;weaponAnim.offsetY=-.78*p;weaponAnim.offsetZ=.1*p;weaponAnim.roll=-.34*p;
         if(p>=1){
           selectedWeapon=weaponAnim.pending;setWeaponModel(selectedWeapon);
+          if(selectedWeapon==="knife"&&weaponParts.knifePivot)weaponParts.knifePivot.rotation.z=knifeDrawTurn;
           weaponAnim.phase="raise";weaponAnim.time=0;
         }
       }else if(weaponAnim.phase==="raise"){
@@ -242,7 +258,9 @@
       }else if(weaponAnim.phase==="action"){
         const p=Math.min(1,weaponAnim.time/weaponAnim.duration);
         if(selectedWeapon==="knife"){
-          weaponAnim.spin=easeMotion(p)*Math.PI*2;
+          // CS2-style draw: enter from a rotated reverse-grip pose, then settle
+          // around the finger ring instead of performing a full free-floating spin.
+          weaponAnim.spin=(1-easeMotion(p))*knifeDrawTurn;
           if(weaponParts.knifePivot)weaponParts.knifePivot.rotation.z=weaponAnim.spin;
           weaponAnim.offsetZ=.08*Math.sin(Math.PI*p);
         }else{
@@ -403,10 +421,12 @@
     }
     function updateCamera(){
       camera.position.set(player.x,1.65,player.z);camera.rotation.order="YXZ";camera.rotation.set(player.pitch,player.yaw,0);
-      weaponModel.position.set(weaponAnim.offsetX,weaponAnim.offsetY,weaponAnim.offsetZ-(player.weaponKick||0));
+      weaponModel.position.set(weaponAnim.offsetX+weaponAnim.slashX,weaponAnim.offsetY+weaponAnim.slashY,weaponAnim.offsetZ+weaponAnim.slashZ-(player.weaponKick||0));
       weaponModel.rotation.x=weaponAnim.pitch-(player.weaponKick||0)*.16;
-      weaponModel.rotation.y=weaponParts.knifePivot?0:(selectedWeapon==="knife"?weaponAnim.spin:0);
-      weaponModel.rotation.z=weaponAnim.roll+(weaponParts.knifePivot?0:(selectedWeapon==="knife"?weaponAnim.spin:0))+(player.weaponSwing||0);
+      const knifeTurn=selectedWeapon==="knife"?weaponAnim.spin+weaponAnim.slashAngle:0;
+      if(weaponParts.knifePivot)weaponParts.knifePivot.rotation.z=knifeTurn;
+      weaponModel.rotation.y=weaponParts.knifePivot?0:knifeTurn;
+      weaponModel.rotation.z=weaponAnim.roll+weaponAnim.slashRoll+(weaponParts.knifePivot?0:knifeTurn)+(player.weaponSwing||0);
       camera.updateMatrixWorld(true);
     }
 
@@ -504,7 +524,8 @@
       return point;
     }
     function knifeAttack(){
-      const gun=weapons.knife;player.fireCooldown=gun.cooldown;player.weaponKick=.12;player.weaponSwing=-.48;
+      const gun=weapons.knife;player.fireCooldown=gun.cooldown;player.weaponKick=.08;player.weaponSwing=0;
+      weaponAnim.slashActive=true;weaponAnim.slashTime=0;weaponAnim.slashAngle=0;weaponAnim.slashX=0;weaponAnim.slashY=0;weaponAnim.slashZ=0;weaponAnim.slashRoll=0;
       updateCamera();raycaster.setFromCamera(new THREE.Vector2(0,0),camera);raycaster.far=2.8;
       const hits=raycaster.intersectObjects(enemies.map(e=>e.group),true);
       if(!hits.length){setMessage("揮砍落空",.35);return;}
