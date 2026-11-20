@@ -237,16 +237,16 @@
         // cross-body karambit cut while keeping the ring as the animation pivot.
         if(p<.24){
           const q=easeMotion(p/.24);
-          weaponAnim.slashAngle=.34*q;
-          weaponAnim.slashX=-.035*q;weaponAnim.slashY=.035*q;weaponAnim.slashZ=-.04*q;weaponAnim.slashRoll=.08*q;
+          weaponAnim.slashAngle=-.34*q;
+          weaponAnim.slashX=.035*q;weaponAnim.slashY=.035*q;weaponAnim.slashZ=-.04*q;weaponAnim.slashRoll=-.08*q;
         }else if(p<.56){
           const q=easeMotion((p-.24)/.32);
-          weaponAnim.slashAngle=.34-1.48*q;
-          weaponAnim.slashX=-.035+.16*q;weaponAnim.slashY=.035-.06*q;weaponAnim.slashZ=-.04+.09*q;weaponAnim.slashRoll=.08-.38*q;
+          weaponAnim.slashAngle=-.34+1.48*q;
+          weaponAnim.slashX=.035-.16*q;weaponAnim.slashY=.035-.06*q;weaponAnim.slashZ=-.04+.09*q;weaponAnim.slashRoll=-.08+.38*q;
         }else{
           const q=easeMotion((p-.56)/.44);
-          weaponAnim.slashAngle=-1.14*(1-q);
-          weaponAnim.slashX=.125*(1-q);weaponAnim.slashY=-.025*(1-q);weaponAnim.slashZ=.05*(1-q);weaponAnim.slashRoll=-.30*(1-q);
+          weaponAnim.slashAngle=1.14*(1-q);
+          weaponAnim.slashX=-.125*(1-q);weaponAnim.slashY=-.025*(1-q);weaponAnim.slashZ=.05*(1-q);weaponAnim.slashRoll=.30*(1-q);
         }
         if(p>=1){weaponAnim.slashActive=false;weaponAnim.slashTime=0;weaponAnim.slashAngle=0;weaponAnim.slashX=0;weaponAnim.slashY=0;weaponAnim.slashZ=0;weaponAnim.slashRoll=0;}
       }
